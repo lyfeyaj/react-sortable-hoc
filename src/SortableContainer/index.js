@@ -44,6 +44,8 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
       distance: 0,
       useWindowAsScrollContainer: false,
       hideSortableGhost: true,
+      guessScrollIntention: false,
+      scrollAcceleration: { x: 10, y: 10 },
       shouldCancelStart: function(e) {
         // Cancel sorting if the event target is an `input`, `textarea`, `select` or `option`
         const disabledElements = ['input', 'textarea', 'select', 'option', 'button'];
@@ -76,6 +78,11 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
       useWindowAsScrollContainer: PropTypes.bool,
       hideSortableGhost: PropTypes.bool,
       lockToContainerEdges: PropTypes.bool,
+      guessScrollIntention: PropTypes.bool,
+      scrollAcceleration: PropTypes.shape({
+        x: PropTypes.number,
+        y: PropTypes.number,
+      }),
       lockOffset: PropTypes.oneOfType([
         PropTypes.number,
         PropTypes.string,
@@ -200,11 +207,14 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
     handleMove = e => {
       const {distance, pressThreshold} = this.props;
 
-      if (!this.state.sorting && this._touched) {
+      if (this._pos) {
         this._delta = {
           x: this._pos.x - e.pageX,
           y: this._pos.y - e.pageY,
         };
+      }
+
+      if (!this.state.sorting && this._touched) {
         const delta = Math.abs(this._delta.x) + Math.abs(this._delta.y);
 
         if (!distance && (!pressThreshold || pressThreshold && delta >= pressThreshold)) {
@@ -726,6 +736,8 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
     }
 
     autoscroll = () => {
+      const {guessScrollIntention, scrollAcceleration} = this.props;
+
       const translate = this.translate;
       const direction = {
         x: 0,
@@ -735,23 +747,26 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
         x: 1,
         y: 1,
       };
-      const acceleration = {
-        x: 10,
-        y: 10,
-      };
 
       if (translate.y >= this.maxTranslate.y - this.height / 2) {
         direction.y = 1; // Scroll Down
-        speed.y = acceleration.y * Math.abs((this.maxTranslate.y - this.height / 2 - translate.y) / this.height);
+        speed.y = scrollAcceleration.y * Math.abs((this.maxTranslate.y - this.height / 2 - translate.y) / this.height);
       } else if (translate.x >= this.maxTranslate.x - this.width / 2) {
         direction.x = 1; // Scroll Right
-        speed.x = acceleration.x * Math.abs((this.maxTranslate.x - this.width / 2 - translate.x) / this.width);
+        speed.x = scrollAcceleration.x * Math.abs((this.maxTranslate.x - this.width / 2 - translate.x) / this.width);
       } else if (translate.y <= this.minTranslate.y + this.height / 2) {
         direction.y = -1; // Scroll Up
-        speed.y = acceleration.y * Math.abs((translate.y - this.height / 2 - this.minTranslate.y) / this.height);
+        speed.y = scrollAcceleration.y * Math.abs((translate.y - this.height / 2 - this.minTranslate.y) / this.height);
       } else if (translate.x <= this.minTranslate.x + this.width / 2) {
         direction.x = -1; // Scroll Left
-        speed.x = acceleration.x * Math.abs((translate.x - this.width / 2 - this.minTranslate.x) / this.width);
+        speed.x = scrollAcceleration.x * Math.abs((translate.x - this.width / 2 - this.minTranslate.x) / this.width);
+      }
+
+      const autoscrollEnabled = direction.x !== 0 || direction.y !== 0;
+
+      if (guessScrollIntention && autoscrollEnabled) {
+        direction.x = this._delta.x > 0 ? -1 : 1;
+        direction.y = this._delta.y > 0 ? -1 : 1;
       }
 
       if (this.autoscrollInterval) {
@@ -760,7 +775,7 @@ export default function sortableContainer(WrappedComponent, config = {withRef: f
         this.isAutoScrolling = false;
       }
 
-      if (direction.x !== 0 || direction.y !== 0) {
+      if (autoscrollEnabled) {
         this.autoscrollInterval = setInterval(
           () => {
             this.isAutoScrolling = true;
